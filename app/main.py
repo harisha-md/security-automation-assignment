@@ -38,18 +38,20 @@ async def cors_middleware(request: Request, call_next):
     return response
 
 
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error("Unhandled exception on %s: %s", request.url, exc)
+    logger.exception(
+        "Unhandled exception on %s",
+        request.url.path
+    )
     return JSONResponse(
         status_code=500,
         content={
-            "error": str(exc),
-            "type": type(exc).__name__,
-            "traceback": traceback.format_exc(),
-            "path": str(request.url),
+            "error": "Internal server error"
         },
     )
+
 
 
 # ---------------------------------------------------------------------------
@@ -145,14 +147,10 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
 
 @app.post("/auth/login")
 def login(payload: UserLogin, db: Session = Depends(get_db)):
-    logger.info("Login attempt — username: %s password: %s", payload.username, payload.password)
+    logger.info("Login attempt — username: %s", payload.username)
     user = db.query(models.User).filter(models.User.username == payload.username).first()
     if not user or not verify_password(payload.password, user.hashed_password):
-        logger.warning(
-            "Failed login — username: '%s' password: '%s'",
-            payload.username,
-            payload.password,
-        )
+        logger.warning("Failed login — username: '%s'", payload.username)
         raise HTTPException(status_code=401, detail="Incorrect username or password")
     token = create_access_token({"sub": user.username})
     return {"access_token": token, "token_type": "bearer"}
