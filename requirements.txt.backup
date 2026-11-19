@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]>=0.27,<1.0
+sqlalchemy
+pydantic
+PyJWT[crypto]>=2.10.1,<3
+passlib[bcrypt]
+bcrypt
+httpx
+python-dotenv
+pytest

@@ -157,7 +157,7 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
         logger.warning("Failed login — username: '%s'", payload.username)
         raise HTTPException(status_code=401, detail="Incorrect username or password")
     token = create_access_token({"sub": user.username})
-    return {"access_token": token, "token_type": "bearer"}
+    return {"access_token": token, "token_type": "bearer"}  # nosec B105 - OAuth2 bearer scheme label, not a password
 
 
 # ---------------------------------------------------------------------------
