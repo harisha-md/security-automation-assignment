@@ -1,4 +1,6 @@
 import logging
+import secrets
+from datetime import datetime, timedelta
 import traceback
 from datetime import datetime
 from typing import List, Optional
@@ -91,6 +93,8 @@ class ScanCreate(BaseModel):
 class ScanUpdate(BaseModel):
     status: Optional[str] = None
     remediation_notes: Optional[str] = None
+class ShareCreate(BaseModel):
+    password: Optional[str] = None
 
 
 class ScanOut(BaseModel):
@@ -269,6 +273,93 @@ def delete_scan(
     db.delete(scan)
     db.commit()
 
+
+# --------------------------------------------------
+# Share Report Link
+# --------------------------------------------------
+
+@app.post("/scans/{scan_id}/share")
+def create_share_link(
+    scan_id: int,
+    payload: ShareCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    scan = db.query(models.ScanResult).filter(
+        models.ScanResult.id == scan_id,
+        models.ScanResult.owner_id == current_user.id
+    ).first()
+
+    if not scan:
+        raise HTTPException(
+            status_code=404,
+            detail="Scan not found"
+        )
+
+    token = secrets.token_urlsafe(32)
+
+    share_link = models.ShareLink(
+        token=token,
+        scan_id=scan.id,
+        expires_at=datetime.utcnow() + timedelta(hours=24),
+        password_hash=(
+            get_password_hash(payload.password)
+            if payload.password else None
+        )
+    )
+
+    db.add(share_link)
+    db.commit()
+
+    share_url = f"{str(request.base_url).rstrip('/')}/share/{token}"
+
+    return {"share_url": share_url}
+
+
+@app.get("/share/{token}", response_model=ScanOut)
+def access_shared_scan(
+    token: str,
+    password: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    share_link = db.query(models.ShareLink).filter(
+        models.ShareLink.token == token
+    ).first()
+
+    if not share_link:
+        raise HTTPException(
+            status_code=404,
+            detail="Share link not found"
+        )
+
+    if share_link.expires_at <= datetime.utcnow():
+        raise HTTPException(
+            status_code=410,
+            detail="Share link has expired"
+        )
+
+    if share_link.password_hash:
+        if not password or not verify_password(
+            password,
+            share_link.password_hash
+        ):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or missing password"
+            )
+
+    scan = db.query(models.ScanResult).filter(
+        models.ScanResult.id == share_link.scan_id
+    ).first()
+
+    if not scan:
+        raise HTTPException(
+            status_code=404,
+            detail="Scan not found"
+        )
+
+    return scan
 
 # ---------------------------------------------------------------------------
 # Health
